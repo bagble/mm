@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     pull_policy: always
     volumes:
-      - ./mm/logs:/app/logs
+      - ./logs:/app/logs
     environment:
       - FALLBACK_PRICE=32000
       - TICKSIZE=10
@@ -24,8 +24,8 @@ services:
       - GAP_PROBABILITY=0.3
       - GAP_MIN_TICKS=-500
       - GAP_MAX_TICKS=1000
-      - PRICE_SAVE_FILE=/app/last_price.json
-      - LOG_FILE_PATH=/app/trading_bot.log
+      - PRICE_SAVE_FILE=/app/logs/last_price.json
+      - LOG_FILE_PATH=/app/logs/trading_bot.log
     extra_hosts:
       - "host.docker.internal:host-gateway"
     logging:
