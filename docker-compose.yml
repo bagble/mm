@@ -1,0 +1,35 @@
+services:
+  mm:
+    image: ghcr.io/bagble/mm:latest
+    container_name: mm
+    restart: unless-stopped
+    # 파일 보존을 위한 볼륨 설정
+    volumes:
+      - ./mm/logs:/app
+    environment:
+      - FALLBACK_PRICE=32000
+      - TICKSIZE=10
+      - WHALE_RATIO=0.07
+      - SYMBOL=TST
+      - SSE_URL=http://host.docker.internal:8000/api/sse/data/TST?partial_book=true
+      - ORDER_API_BASE=http://host.docker.internal:8000/api/v1/market/orders
+      - SPREAD_FILLER_THRESHOLD=10
+      - ONEWAY_PROB=0.008
+      - CANCEL_TOP_PROB=0.05
+      - ONEWAY_DURATION_MIN=20
+      - ONEWAY_DURATION_MAX=120
+      - MIN_PRICE=10
+      - UPWARD_BIAS=0.5
+      - MARKET_WARMUP_SECONDS=60
+      - GAP_PROBABILITY=0.3
+      - GAP_MIN_TICKS=-500
+      - GAP_MAX_TICKS=1000
+      - PRICE_SAVE_FILE=/app/last_price.json
+      - LOG_FILE_PATH=/app/trading_bot.log
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
