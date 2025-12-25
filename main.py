@@ -11,7 +11,7 @@ import os
 FALLBACK_PRICE = int(os.getenv("FALLBACK_PRICE", 32000))
 TICKSIZE = int(os.getenv("TICKSIZE", 10))
 WHALE_RATIO = float(os.getenv("WHALE_RATIO", 0.07))
-SYMBOL = os.getenv("SYMBOL", "TST")
+SYMBOL = os.getenv("SYMBOL", "EXC")
 SSE_URL = os.getenv("SSE_URL", f"http://localhost:8000/api/sse/data/{SYMBOL}?partial_book=true")
 ORDER_API_BASE = os.getenv("ORDER_API_BASE", "http://localhost:8000/api/v1/market/orders")
 SPREAD_FILLER_THRESHOLD = int(os.getenv("SPREAD_FILLER_THRESHOLD", 10))

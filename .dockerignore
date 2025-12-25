@@ -1,0 +1,12 @@
+# Ignore logs and temp files
+mm/logs
+*.pyc
+__pycache__
+.env
+.venv
+.git
+.vscode
+.DS_Store
+build
+dist
+*.egg-info

@@ -3,15 +3,15 @@ services:
     image: ghcr.io/bagble/mm:latest
     container_name: mm
     restart: unless-stopped
-    # 파일 보존을 위한 볼륨 설정
+    pull_policy: always
     volumes:
-      - ./mm/logs:/app
+      - ./mm/logs:/app/logs
     environment:
       - FALLBACK_PRICE=32000
       - TICKSIZE=10
       - WHALE_RATIO=0.07
-      - SYMBOL=TST
-      - SSE_URL=http://host.docker.internal:8000/api/sse/data/TST?partial_book=true
+      - SYMBOL=EXC
+      - SSE_URL=http://host.docker.internal:8000/api/sse/data/EXC?partial_book=true
       - ORDER_API_BASE=http://host.docker.internal:8000/api/v1/market/orders
       - SPREAD_FILLER_THRESHOLD=10
       - ONEWAY_PROB=0.008
