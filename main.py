@@ -321,7 +321,7 @@ class UltraFastMarketBot:
         return orders
 
     def sideways_orders(self, ref_price):
-        """횡보장에서 방향성 있는 호가 배치"""
+        """횡보장에서 방향성 있는 호가 배치 (호가만 편향, 시장가는 랜덤)"""
         orders = []
         
         # 기준가 기준으로 위아래 3-5틱씩 배치
@@ -339,10 +339,6 @@ class UltraFastMarketBot:
                 buy_price = self.nearest_tick(ref_price - (i - 1) * self.ticksize)
                 buy_qty = random.randint(80, 150)  # 많은 수량
                 orders.append({"side": "buy", "type": "limit", "price": buy_price, "quantity": buy_qty})
-            
-            # 가끔 시장가 매수로 압력
-            if random.random() < 0.3:
-                orders.append({"side": "buy", "type": "market", "quantity": random.randint(10, 30)})
                 
         elif self.market_trend == "slight_down":
             # 하락 편향: 하단에 매도 많이, 상단에 매수 적게
@@ -356,10 +352,6 @@ class UltraFastMarketBot:
                 buy_price = self.nearest_tick(ref_price + i * self.ticksize)
                 buy_qty = random.randint(20, 50)  # 적은 수량
                 orders.append({"side": "buy", "type": "limit", "price": buy_price, "quantity": buy_qty})
-            
-            # 가끔 시장가 매도로 압력
-            if random.random() < 0.3:
-                orders.append({"side": "sell", "type": "market", "quantity": random.randint(10, 30)})
                 
         else:  # neutral
             # 중립: 양쪽 수량 비슷하게
@@ -373,11 +365,11 @@ class UltraFastMarketBot:
                 buy_price = self.nearest_tick(ref_price - (i - 1) * self.ticksize)
                 buy_qty = random.randint(50, 90)
                 orders.append({"side": "buy", "type": "limit", "price": buy_price, "quantity": buy_qty})
-            
-            # 가끔 랜덤 시장가
-            if random.random() < 0.2:
-                side = random.choice(["buy", "sell"])
-                orders.append({"side": side, "type": "market", "quantity": random.randint(10, 25)})
+        
+        # 시장가는 모든 트렌드에서 랜덤으로 (편향 없음)
+        if random.random() < 0.2:
+            side = random.choice(["buy", "sell"])
+            orders.append({"side": side, "type": "market", "quantity": random.randint(10, 25)})
         
         return orders
 
