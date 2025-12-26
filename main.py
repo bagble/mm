@@ -7,7 +7,6 @@ import logging
 from collections import defaultdict
 import os
 
-# 환경 변수 및 상수 설정
 FALLBACK_PRICE = int(os.getenv("FALLBACK_PRICE", 32000))
 TICKSIZE = int(os.getenv("TICKSIZE", 10))
 WHALE_RATIO = float(os.getenv("WHALE_RATIO", 0.07))
@@ -41,18 +40,16 @@ logging.basicConfig(
 )
 
 def aggregate_orders(orders):
-    # 동일한 사이드, 타입, 가격의 주문을 하나로 합침
-    # cancel_after 속성도 처리하도록 추가
-    market_orders = defaultdict(lambda: {"quantity": 0, "log": None, "persistent": False, "cancel_after": None})
-    limit_orders = defaultdict(lambda: {"quantity": 0, "log": None, "persistent": False, "cancel_after": None})
+    
+    market_orders = defaultdict(lambda: {"quantity": 0, "log": None, "persistent": False})
+    limit_orders = defaultdict(lambda: {"quantity": 0, "log": None, "persistent": False})
     
     for order in orders:
         side = order["side"]
         order_type = order["type"]
         quantity = order["quantity"]
         log_flag = order.get("log")
-        persistent = order.get("persistent", False)
-        cancel_after = order.get("cancel_after") # 자동 취소 시간
+        persistent = order.get("persistent", False)  
         
         if order_type == "market":
             key = side
@@ -61,9 +58,8 @@ def aggregate_orders(orders):
                 market_orders[key]["log"] = log_flag
             if persistent:
                 market_orders[key]["persistent"] = True
-            if cancel_after:
-                market_orders[key]["cancel_after"] = cancel_after
         else:
+            
             price = order["price"]
             key = (side, price)
             limit_orders[key]["quantity"] += quantity
@@ -71,8 +67,6 @@ def aggregate_orders(orders):
                 limit_orders[key]["log"] = log_flag
             if persistent:
                 limit_orders[key]["persistent"] = True
-            if cancel_after:
-                limit_orders[key]["cancel_after"] = cancel_after
     
     aggregated = []
     
@@ -82,8 +76,7 @@ def aggregate_orders(orders):
             "type": "market",
             "quantity": data["quantity"],
             "log": data["log"],
-            "persistent": data["persistent"],
-            "cancel_after": data["cancel_after"]
+            "persistent": data["persistent"]
         })
     
     for (side, price), data in limit_orders.items():
@@ -93,12 +86,10 @@ def aggregate_orders(orders):
             "price": price,
             "quantity": data["quantity"],
             "log": data["log"],
-            "persistent": data["persistent"],
-            "cancel_after": data["cancel_after"]
+            "persistent": data["persistent"]
         })
     
     return aggregated
-
 
 class UltraFastMarketBot:
     def __init__(self, fallback_price, ticksize, whale_ratio=0.25):
@@ -117,17 +108,17 @@ class UltraFastMarketBot:
         
         self.prev_market_mode = "neutral"
         self.prev_oneway_strength = "none"
-        self.prev_market_trend = None
-        
+        self.market_trend = None  # 횡보 트렌드 저장
+       
         self.market_opened_at = None
         self.last_close_price = None
-        
         self.load_last_price()
 
         self.market_open_event = asyncio.Event()
         self.market_open_event.set()
         
     def save_last_price(self):
+        
         try:
             data = {
                 "last_trade_price": self.last_trade_price,
@@ -140,6 +131,7 @@ class UltraFastMarketBot:
             logging.error(f"가격 저장 실패: {e}")
 
     def load_last_price(self):
+        
         try:
             with open(PRICE_SAVE_FILE, 'r') as f:
                 data = json.load(f)
@@ -148,9 +140,11 @@ class UltraFastMarketBot:
                 timestamp = data.get("timestamp")
                 
                 if self.last_trade_price:
-                    logging.info(f"저장된 가격 로드: {self.last_trade_price}")
+                    logging.info(f"💾 저장된 가격 로드: {self.last_trade_price} (저장 시각: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))})")
+                if self.last_close_price:
+                    logging.info(f"💾 저장된 종가 로드: {self.last_close_price}")
         except FileNotFoundError:
-            logging.info("저장된 가격 파일 없음. 기본값 사용")
+            logging.info("💾 저장된 가격 파일이 없습니다. 기본값 사용")
         except Exception as e:
             logging.error(f"가격 로드 실패: {e}")
 
@@ -165,10 +159,13 @@ class UltraFastMarketBot:
     def get_reference_price(self):
         ltp = self.last_trade_price
         if ltp is not None:
+            print("Ledger: " + str(ltp)) 
             return self.nearest_tick(ltp)
+        print("FallBack: " + str(self.fallback_price))
         return self.nearest_tick(self.fallback_price)
 
     def is_warmup_period(self):
+        
         if self.market_opened_at is None:
             return False
         return (time.time() - self.market_opened_at) < MARKET_WARMUP_SECONDS
@@ -203,7 +200,7 @@ class UltraFastMarketBot:
         flag = "[WHALE]"
         orders = []
         
-        logging.info(f"고래 활동 감지: {direction}, 기준수량={size_base}, 배수={mult}")
+        logging.info(f"🐋 고래 활동 감지: {direction.upper()} 방향, 기준수량={size_base}, 배수={mult}")
         
         if direction == "bullish":
             orders += [{"side": "buy", "type": "market", "quantity": size_base, "log": flag} for _ in range(mult)]
@@ -221,9 +218,10 @@ class UltraFastMarketBot:
         if self.market_opened_at is not None:
             time_since_open = now - self.market_opened_at
             if time_since_open < MARKET_WARMUP_SECONDS:
+                
                 if self.market_mode != "neutral":
                     remaining = int(MARKET_WARMUP_SECONDS - time_since_open)
-                    logging.info(f"시장 상태 변경: NEUTRAL (호가 채우기 - 남은 시간: {remaining}초)")
+                    logging.info(f"📊 시장 상태 변경: NEUTRAL (호가 채우기 기간 - 남은 시간: {remaining}초)")
                 self.market_mode = "neutral"
                 self.oneway_strength = "none"
                 self.prev_market_mode = "neutral"
@@ -250,13 +248,27 @@ class UltraFastMarketBot:
                     self.oneway_strength = random.choices(["weak", "medium", "strong"], [0.5, 0.3, 0.2])[0]
                 
                 duration = int(self.market_mode_until - now)
-                logging.info(f"시장 상태 변경: {direction} (강도: {self.oneway_strength}, 지속: {duration}초)")
+                logging.info(f"📊 시장 상태 변경: {direction.upper()} (강도: {self.oneway_strength}, 지속: {duration}초)")
                 
                 self.prev_market_mode = self.market_mode
                 self.prev_oneway_strength = self.oneway_strength
             else:
+                # 원웨이 -> 횡보 전환 시점에만 market_trend 선택
                 if self.market_mode != "neutral":
-                    logging.info(f"시장 상태 변경: NEUTRAL (횡보 전환)")
+                    # 횡보 트렌드를 한 번만 선택
+                    self.market_trend = random.choices(
+                        ["slight_up", "slight_down", "neutral"],
+                        [UPWARD_BIAS, 1 - UPWARD_BIAS, 0.2]
+                    )[0]
+                    
+                    trend_name = {
+                        "slight_up": "횡보:약상승", 
+                        "slight_down": "횡보:약하락", 
+                        "neutral": "횡보:중립"
+                    }[self.market_trend]
+                    
+                    logging.info(f"📊 시장 상태 변경: {trend_name} (다음 원웨이까지 유지)")
+                    
                 self.market_mode = "neutral"
                 self.oneway_strength = "none"
                 self.prev_market_mode = "neutral"
@@ -272,6 +284,7 @@ class UltraFastMarketBot:
         orders = []
         spread = best_ask - best_bid
         str_mult = {"strong": 2.4, "medium": 1.5, "weak": 1.1, "none": 1.0}[self.oneway_strength]
+        
         
         threshold = 5 if self.is_warmup_period() else SPREAD_FILLER_THRESHOLD
         is_warmup = self.is_warmup_period()
@@ -298,6 +311,7 @@ class UltraFastMarketBot:
                     orders.append({"side": "buy", "type": "limit", "price": buy_px, "quantity": qty, "persistent": is_warmup})
             else:
                 for px in px_list:
+                    
                     base_qty = random.randint(750, 1500)
                     if is_warmup:
                         base_qty = random.randint(2400, 5000)  
@@ -306,14 +320,75 @@ class UltraFastMarketBot:
                     orders.append({"side": side, "type": "limit", "price": px, "quantity": qty, "persistent": is_warmup})
         return orders
 
+    def sideways_orders(self, ref_price):
+        """횡보장에서 방향성 있는 호가 배치"""
+        orders = []
+        
+        # 기준가 기준으로 위아래 3-5틱씩 배치
+        num_levels = random.randint(3, 5)
+        
+        if self.market_trend == "slight_up":
+            # 상승 편향: 상단에 매도 적게, 하단에 매수 많이
+            for i in range(1, num_levels + 1):
+                # 상단 매도호가 (10010, 10020, 10030...)
+                sell_price = self.nearest_tick(ref_price + i * self.ticksize)
+                sell_qty = random.randint(20, 50)  # 적은 수량
+                orders.append({"side": "sell", "type": "limit", "price": sell_price, "quantity": sell_qty})
+                
+                # 하단 매수호가 (10000, 9990, 9980...)
+                buy_price = self.nearest_tick(ref_price - (i - 1) * self.ticksize)
+                buy_qty = random.randint(80, 150)  # 많은 수량
+                orders.append({"side": "buy", "type": "limit", "price": buy_price, "quantity": buy_qty})
+            
+            # 가끔 시장가 매수로 압력
+            if random.random() < 0.3:
+                orders.append({"side": "buy", "type": "market", "quantity": random.randint(10, 30)})
+                
+        elif self.market_trend == "slight_down":
+            # 하락 편향: 하단에 매도 많이, 상단에 매수 적게
+            for i in range(1, num_levels + 1):
+                # 하단 매도호가 (10000, 9990, 9980...)
+                sell_price = self.nearest_tick(ref_price - (i - 1) * self.ticksize)
+                sell_qty = random.randint(80, 150)  # 많은 수량
+                orders.append({"side": "sell", "type": "limit", "price": sell_price, "quantity": sell_qty})
+                
+                # 상단 매수호가 (10010, 10020, 10030...)
+                buy_price = self.nearest_tick(ref_price + i * self.ticksize)
+                buy_qty = random.randint(20, 50)  # 적은 수량
+                orders.append({"side": "buy", "type": "limit", "price": buy_price, "quantity": buy_qty})
+            
+            # 가끔 시장가 매도로 압력
+            if random.random() < 0.3:
+                orders.append({"side": "sell", "type": "market", "quantity": random.randint(10, 30)})
+                
+        else:  # neutral
+            # 중립: 양쪽 수량 비슷하게
+            for i in range(1, num_levels + 1):
+                # 상단 매도호가
+                sell_price = self.nearest_tick(ref_price + i * self.ticksize)
+                sell_qty = random.randint(50, 90)
+                orders.append({"side": "sell", "type": "limit", "price": sell_price, "quantity": sell_qty})
+                
+                # 하단 매수호가
+                buy_price = self.nearest_tick(ref_price - (i - 1) * self.ticksize)
+                buy_qty = random.randint(50, 90)
+                orders.append({"side": "buy", "type": "limit", "price": buy_price, "quantity": buy_qty})
+            
+            # 가끔 랜덤 시장가
+            if random.random() < 0.2:
+                side = random.choice(["buy", "sell"])
+                orders.append({"side": side, "type": "market", "quantity": random.randint(10, 25)})
+        
+        return orders
+
     def decide_orders(self):
         self.maybe_trigger_oneway()
         self.set_liquidity_level()
         ref_price = self.get_reference_price()
         orders = []
         
-        # 웜업 기간: 두터운 호가 조성
         if self.is_warmup_period():
+            
             n_limit = random.randint(25, 40)
             for _ in range(n_limit):
                 buy_offset = random.randint(1, 60)
@@ -332,19 +407,18 @@ class UltraFastMarketBot:
                 market_qty = random.randint(50, 150)
                 orders.append({"side": side, "type": "market", "quantity": market_qty})
             
+            n_small = random.randint(1, 3)
+            for _ in range(n_small):
+                side = random.choice(["buy", "sell"])
+                small_qty = random.randint(10, 50)
+                orders.append({"side": side, "type": "market", "quantity": small_qty})
+            
             if self.depth_data and self.depth_data.get("bids") and self.depth_data.get("asks"):
                 best_bid = self.depth_data["bids"][0][0]
                 best_ask = self.depth_data["asks"][0][0]
                 orders += self.spread_filler_orders(best_bid, best_ask)
-            
-            # [추가됨] 웜업 기간에 생성된 지정가 호가는 30분(1800초) 뒤 자동 삭제 태깅
-            for o in orders:
-                if o['type'] == 'limit':
-                    o['cancel_after'] = 1800
-
             return aggregate_orders(orders)
         
-        # 원웨이 장세
         if self.is_oneway_up():
             str_mult = {"strong": 2.4, "medium": 1.8, "weak": 1.5}[self.oneway_strength]
             n = int(random.randint(2, 5) * str_mult)
@@ -356,59 +430,31 @@ class UltraFastMarketBot:
             orders += [{"side": "sell", "type": "limit", "price": self.nearest_tick(ref_price - int(str_mult * random.randint(10, 30)) * self.ticksize), "quantity": int(random.randint(7, 150) * str_mult)} for _ in range(n)]
             orders += [{"side": "buy", "type": "limit", "price": self.nearest_tick(ref_price - int(str_mult * random.randint(12, 35)) * self.ticksize), "quantity": int(random.randint(1, 50) * str_mult)} for _ in range(n)]
         else:
-            # 횡보/일반 장세
+            # 횡보 구간
             is_whale_active = random.random() < self.whale_ratio
             if is_whale_active:
                 orders += self.whale_orders(ref_price)
             else:
-                # 시장 미세 추세 설정 (약상승/약하락/중립)
-                market_trend = random.choices(
-                    ["slight_up", "slight_down", "neutral"],
-                    [UPWARD_BIAS, 1 - UPWARD_BIAS, 0.2]
-                )[0]
-                
-                if market_trend != self.prev_market_trend:
-                    trend_name = {"slight_up": "횡보:약상승", "slight_down": "횡보:약하락", "neutral": "횡보:중립"}[market_trend]
-                    logging.info(f"시장 상태 변경: {trend_name}")
-                    self.prev_market_trend = market_trend
+                # 초기화되지 않았다면 기본값 설정
+                if self.market_trend is None:
+                    self.market_trend = random.choices(
+                        ["slight_up", "slight_down", "neutral"],
+                        [UPWARD_BIAS, 1 - UPWARD_BIAS, 0.2]
+                    )[0]
+                    trend_name = {
+                        "slight_up": "횡보:약상승", 
+                        "slight_down": "횡보:약하락", 
+                        "neutral": "횡보:중립"
+                    }[self.market_trend]
+                    logging.info(f"📊 시장 상태 초기화: {trend_name}")
 
-                # 추세에 따라 매수/매도 수량 불균형 설정 (Skew)
-                if market_trend == "slight_up":
-                    buy_qty_mult = 2.5   # 매수 수량 가중치
-                    sell_qty_mult = 0.4  # 매도 수량 가중치
-                elif market_trend == "slight_down":
-                    buy_qty_mult = 0.4
-                    sell_qty_mult = 2.5
-                else:
-                    buy_qty_mult = 1.0
-                    sell_qty_mult = 1.0
-
-                # 호가 레이어링 (현재가 주변을 촘촘하게 채움)
-                num_layers = random.randint(2, 4)
-                base_qty = random.randint(20, 60)
-
-                for i in range(1, num_layers + 1):
-                    # 매도 호가
-                    ask_px = self.nearest_tick(ref_price + i * self.ticksize)
-                    ask_qty = int(base_qty * sell_qty_mult * random.uniform(0.8, 1.2))
-                    orders.append({"side": "sell", "type": "limit", "price": ask_px, "quantity": max(ask_qty, 1)})
-
-                    # 매수 호가
-                    bid_px = self.nearest_tick(ref_price - i * self.ticksize)
-                    bid_qty = int(base_qty * buy_qty_mult * random.uniform(0.8, 1.2))
-                    orders.append({"side": "buy", "type": "limit", "price": bid_px, "quantity": max(bid_qty, 1)})
-
-                # 실제 체결 유도를 위한 소량의 시장가 주문 트리거
-                if random.random() < 0.3:
-                    trigger_side = "buy" if market_trend == "slight_up" else ("sell" if market_trend == "slight_down" else random.choice(["buy", "sell"]))
-                    orders.append({"side": trigger_side, "type": "market", "quantity": random.randint(5, 20)})
+                # 방향성 있는 횡보 호가 배치
+                orders += self.sideways_orders(ref_price)
         
-        # 스프레드 필러 (호가 공백 메우기)
         if self.depth_data and self.depth_data.get("bids") and self.depth_data.get("asks"):
             best_bid = self.depth_data["bids"][0][0]
             best_ask = self.depth_data["asks"][0][0]
             orders += self.spread_filler_orders(best_bid, best_ask)
-        
         return aggregate_orders(orders)
 
     def update_depth(self, depth):
@@ -427,31 +473,36 @@ class UltraFastMarketBot:
                 if self.last_trade_price is not None:
                     self.last_close_price = self.last_trade_price
                     self.save_last_price()
-                    logging.info(f"시장 종료: 거래 중단 (종가: {self.last_close_price})")
+                    logging.info(f"🔴 시장 종료: 거래 중단 (종가: {self.last_close_price}) - 가격 저장됨")
                 else:
-                    logging.info("시장 종료: 거래 중단")
+                    logging.info("🔴 시장 종료: 거래 중단")
                 self.market_open_event.clear()
                 self.market_opened_at = None
         else:
             if not self.market_open_event.is_set():
+                
                 if self.last_close_price is not None and random.random() < GAP_PROBABILITY:
                     gap_ticks = random.randint(GAP_MIN_TICKS, GAP_MAX_TICKS)
                     gap_amount = gap_ticks * self.ticksize
                     new_price = self.nearest_tick(self.last_close_price + gap_amount)
                     new_price = max(new_price, self.min_price)
-                    
+                    gap_direction = "상승" if gap_amount > 0 else "하락"
+                    gap_percent = (gap_amount / self.last_close_price * 100) if self.last_close_price > 0 else 0
                     self.fallback_price = new_price
                     self.last_trade_price = new_price
                     self.save_last_price()
                     
-                    logging.info(f"시장 개장: 갭 발생 {self.last_close_price} -> {new_price}")
+                    logging.info(f"🟢 시장 개장: 가격 갭 발생! {self.last_close_price} → {new_price} ({gap_direction} {abs(gap_amount)}, {gap_percent:.2f}%)")
+                    logging.info(f"   호가 채우기 기간 시작 ({MARKET_WARMUP_SECONDS}초)")
                 else:
-                    logging.info(f"시장 개장: 거래 재개")
+                    
+                    logging.info(f"🟢 시장 개장: 거래 재개 (상태: {self.session_data}) - 호가 채우기 기간 시작 ({MARKET_WARMUP_SECONDS}초)")
                 
                 self.market_opened_at = time.time()
                 self.market_open_event.set()
 
     async def maybe_cancel_top_counterparty(self, session):
+
         if random.random() >= CANCEL_TOP_PROB:
             return
 
@@ -485,25 +536,30 @@ class UltraFastMarketBot:
             return
 
         async def _cancel_worker(session, side, order_ids):
-            deadline = time.time() + 1800 
+            deadline = time.time() + 1800  
             ids = list(order_ids)
             random.shuffle(ids)
             tried = set()
             for oid in ids:
                 if time.time() > deadline:
+                    logging.info(f"⏱️ 주문 취소 타임아웃: 중단 (tried={len(tried)})")
                     return
                 if oid in tried:
                     continue
                 tried.add(oid)
                 try:
                     status, result = await delete_order(session, side, oid)
-                except Exception:
+                except Exception as e:
+                    logging.error(f"주문 취소 에러: {e}")
                     await asyncio.sleep(0.1)
                     continue
 
                 if status == 200:
-                    logging.info(f"상대방 주문 취소 성공: order_id={oid}")
+                    logging.info(f"❌ 카운터파티 주문 취소 성공: order_id={oid}, side={side}")
                     return
+                elif status == 500:
+                    await asyncio.sleep(0.05)
+                    continue
                 else:
                     await asyncio.sleep(0.05)
                     continue
@@ -511,7 +567,7 @@ class UltraFastMarketBot:
         try:
             asyncio.create_task(_cancel_worker(session, side, order_ids))
         except Exception as e:
-            logging.error(f"취소 작업 실패: {e}")
+            logging.error(f"취소 작업 스케줄 실패: {e}")
 
 async def decode_base64_gzip(data):
     return json.loads(data)
@@ -531,10 +587,6 @@ async def delete_order(session, side, order_id):
         logging.error(f"주문 취소 에러: {e}")
         return None, {"error": str(e)}
 
-async def schedule_order_delete(session, side, order_id, delay):
-    await asyncio.sleep(delay)
-    await delete_order(session, side, order_id)
-
 async def send_order(session, order):
     url = f"{ORDER_API_BASE}/{SYMBOL}/{order['side']}"
     body = {"type": order["type"], "quantity": int(order["quantity"])}
@@ -542,25 +594,28 @@ async def send_order(session, order):
         body["price"] = int(order["price"])
     
     if order.get("log") == "[WHALE]":
-        logging.info(f"🐋 WHALE ORDER: {order['side']} {order['quantity']}")
+        logging.info(f"🐋 [WHALE/{order['side'].upper()}/{order['type'].upper()}] {order.get('price', 'Market')}: 수량={order['quantity']}")
 
     try:
         async with session.post(url, json=body, headers=HEADERS) as resp:
             result = await resp.json()
-            # [추가됨] cancel_after 값이 있으면 해당 시간 뒤 자동 취소 예약
-            if result and order.get("cancel_after"):
-                order_info = result.get("order")
-                if order_info and isinstance(order_info, dict):
-                    inner_order = order_info.get("order")
-                    if inner_order and isinstance(inner_order, dict):
-                        order_id = inner_order.get("order_id")
-                        side = inner_order.get("side", order["side"])
-                        if order_id:
-                            asyncio.create_task(schedule_order_delete(session, side, order_id, order["cancel_after"]))
+            order_info = result.get("order")
+            if order_info and isinstance(order_info, dict):
+                inner_order = order_info.get("order")
+                if inner_order and isinstance(inner_order, dict):
+                    order_id = inner_order.get("order_id")
+                    side = inner_order.get("side", order["side"])
+                    
+                    if order_id and not order.get("persistent", False):
+                        asyncio.create_task(schedule_order_delete(session, side, order_id))
             return result
     except Exception as e:
-        logging.error(f"주문 전송 실패: {e}")
+        logging.error(f"주문 에러: {e}")
         return None
+
+async def schedule_order_delete(session, side, order_id):
+    await asyncio.sleep(600)
+    await delete_order(session, side, order_id)
 
 async def sse_listener(bot):
     connector = aiohttp.TCPConnector(limit=50)
@@ -581,7 +636,7 @@ async def sse_listener(bot):
                             elif event == "session":
                                 bot.update_session(await decode_base64_gzip(data))
             except Exception as e:
-                print(f"SSE 연결 에러: {e}")
+                print(f"SSE error: {e}")
                 await asyncio.sleep(2)
 
 async def trading_loop(bot):
@@ -614,4 +669,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("종료됨")
+        print("Terminated")
