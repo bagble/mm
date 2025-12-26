@@ -422,8 +422,10 @@ class UltraFastMarketBot:
             orders += [{"side": "sell", "type": "limit", "price": self.nearest_tick(ref_price - int(str_mult * random.randint(10, 30)) * self.ticksize), "quantity": int(random.randint(7, 150) * str_mult)} for _ in range(n)]
             orders += [{"side": "buy", "type": "limit", "price": self.nearest_tick(ref_price - int(str_mult * random.randint(12, 35)) * self.ticksize), "quantity": int(random.randint(1, 50) * str_mult)} for _ in range(n)]
         else:
-            # 횡보 구간
-            is_whale_active = random.random() < self.whale_ratio
+            # 횡보 구간 - 고래 확률 1/5로 감소
+            sideways_whale_ratio = self.whale_ratio / 5.0
+            is_whale_active = random.random() < sideways_whale_ratio
+            
             if is_whale_active:
                 orders += self.whale_orders(ref_price)
             else:
@@ -440,8 +442,10 @@ class UltraFastMarketBot:
                     }[self.market_trend]
                     logging.info(f"📊 시장 상태 초기화: {trend_name}")
 
-                # 방향성 있는 횡보 호가 배치
-                orders += self.sideways_orders(ref_price)
+                # 방향성 있는 횡보 호가 배치 - 반복 횟수 증가
+                repeat_count = random.randint(2, 4)  # 일반 거래를 2-4배 증가
+                for _ in range(repeat_count):
+                    orders += self.sideways_orders(ref_price)
         
         if self.depth_data and self.depth_data.get("bids") and self.depth_data.get("asks"):
             best_bid = self.depth_data["bids"][0][0]
