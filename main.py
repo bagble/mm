@@ -29,7 +29,7 @@ GAP_MAX_TICKS = int(os.getenv("GAP_MAX_TICKS", 1000))
 
 PRICE_SAVE_FILE = os.getenv("PRICE_SAVE_FILE", "last_price.json")
 LOG_FILE_PATH = os.getenv("LOG_FILE_PATH", "trading_bot.log")
-HEADERS = {}
+HEADERS = {"X-Forwarded-For": "127.0.0.1"}
 
 logging.basicConfig(
     level=logging.INFO,
